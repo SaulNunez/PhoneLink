@@ -1,192 +1,258 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
+#include "nvs.h"
+#include "nvs_flash.h"
 #include "esp_system.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
 #include "esp_bt.h"
-#include "esp_gap_ble_api.h"
-#include "esp_gatts_api.h"
-#include "esp_bt_defs.h"
 #include "esp_bt_main.h"
-#include "esp_gatt_common_api.h"
-#include "sdkconfig.h"
-#include "esp_timer.h"
+#include "esp_bt_device.h"
+#include "esp_gap_bt_api.h"
+#include <inttypes.h> 
 
-static uint8_t adv_config_done = 0;
+#define GAP_TAG          "GAP"
 
-#define ADV_CONFIG_FLAG (1 << 0)
-#define SCAN_RSP_CONFIG_FLAG (1 << 1)
-#define GAP_TAG "GAP_TEST"
+typedef enum {
+    APP_GAP_STATE_IDLE = 0,
+    APP_GAP_STATE_DEVICE_DISCOVERING,
+    APP_GAP_STATE_DEVICE_DISCOVER_COMPLETE,
+    APP_GAP_STATE_SERVICE_DISCOVERING,
+    APP_GAP_STATE_SERVICE_DISCOVER_COMPLETE,
+} app_gap_state_t;
 
-void bt_gapp_callback()
+typedef struct {
+    bool dev_found;
+    uint8_t bdname_len;
+    uint8_t eir_len;
+    uint8_t rssi;
+    uint32_t cod;
+    uint8_t eir[ESP_BT_GAP_EIR_DATA_LEN];
+    uint8_t bdname[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
+    esp_bd_addr_t bda;
+    app_gap_state_t state;
+} app_gap_cb_t;
+
+static app_gap_cb_t m_dev_info;
+
+static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
 {
+    if (bda == NULL || str == NULL || size < 18) {
+        return NULL;
+    }
+
+    uint8_t *p = bda;
+    sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x",
+            p[0], p[1], p[2], p[3], p[4], p[5]);
+    return str;
 }
 
-static uint8_t test_service_uuid128[16] = {
-    /* LSB <--------------------------------------------------------------------------------> MSB */
-    // first uuid, 16bit, [12],[13] is the value
-    0xfb,
-    0x34,
-    0x9b,
-    0x5f,
-    0x80,
-    0x00,
-    0x00,
-    0x80,
-    0x00,
-    0x10,
-    0x00,
-    0x00,
-    0x18,
-    0x0D,
-    0x00,
-    0x00,
-};
-
-static esp_ble_adv_data_t adv_data = {
-    .set_scan_rsp = false,
-    .include_name = true,
-    .include_txpower = true,
-    .min_interval = 0x0006,
-    .max_interval = 0x0010,
-    .appearance = 0x00,
-    .manufacturer_len = 0,       // TEST_MANUFACTURER_DATA_LEN,
-    .p_manufacturer_data = NULL, //&test_manufacturer[0],
-    .service_data_len = 0,
-    .p_service_data = NULL,
-    .service_uuid_len = 32,
-    .p_service_uuid = test_service_uuid128,
-    .flag = (ESP_BLE_ADV_FLAG_GEN_DISC),
-};
-
-static esp_ble_adv_data_t scan_rsp_config = {
-    .set_scan_rsp = true,
-    .include_name = true,
-    .manufacturer_len = 0,
-    .p_manufacturer_data = NULL,
-};
-
-static esp_ble_adv_params_t test_adv_params = {
-    .adv_int_min = 0x20,
-    .adv_int_max = 0x40,
-    .adv_type = ADV_TYPE_IND,
-    .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
-    //.peer_addr        =
-    //.peer_addr_type   =
-    .channel_map = ADV_CHNL_ALL,
-    .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
-};
-
-static esp_ble_adv_params_t adv_params = {
-    .adv_int_min = 0x100,
-    .adv_int_max = 0x100,
-    .adv_type = ADV_TYPE_IND,
-    .own_addr_type = BLE_ADDR_TYPE_RPA_PUBLIC,
-    .channel_map = ADV_CHNL_ALL,
-    .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
-};
-
-static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+static char *uuid2str(esp_bt_uuid_t *uuid, char *str, size_t size)
 {
-    ESP_LOGV(GAP_TAG, "GAP_EVT, event %d", event);
+    if (uuid == NULL || str == NULL) {
+        return NULL;
+    }
 
-    switch (event)
-    {
-    case ESP_GAP_BLE_SCAN_RSP_DATA_SET_COMPLETE_EVT:
-        adv_config_done &= (~SCAN_RSP_CONFIG_FLAG);
-        if (adv_config_done == 0)
-        {
-            esp_ble_gap_start_advertising(&adv_params);
+    if (uuid->len == 2 && size >= 5) {
+        sprintf(str, PRIx16, uuid->uuid.uuid16);
+    } else if (uuid->len == 4 && size >= 9) {
+        sprintf(str, PRIx32, uuid->uuid.uuid32);
+    } else if (uuid->len == 16 && size >= 37) {
+        uint8_t *p = uuid->uuid.uuid128;
+        sprintf(str, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+                p[15], p[14], p[13], p[12], p[11], p[10], p[9], p[8],
+                p[7], p[6], p[5], p[4], p[3], p[2], p[1], p[0]);
+    } else {
+        return NULL;
+    }
+
+    return str;
+}
+
+static bool get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len)
+{
+    uint8_t *rmt_bdname = NULL;
+    uint8_t rmt_bdname_len = 0;
+
+    if (!eir) {
+        return false;
+    }
+
+    rmt_bdname = esp_bt_gap_resolve_eir_data(eir, ESP_BT_EIR_TYPE_CMPL_LOCAL_NAME, &rmt_bdname_len);
+    if (!rmt_bdname) {
+        rmt_bdname = esp_bt_gap_resolve_eir_data(eir, ESP_BT_EIR_TYPE_SHORT_LOCAL_NAME, &rmt_bdname_len);
+    }
+
+    if (rmt_bdname) {
+        if (rmt_bdname_len > ESP_BT_GAP_MAX_BDNAME_LEN) {
+            rmt_bdname_len = ESP_BT_GAP_MAX_BDNAME_LEN;
         }
-        break;
-    case ESP_GAP_BLE_ADV_DATA_SET_COMPLETE_EVT:
-        adv_config_done &= (~ADV_CONFIG_FLAG);
-        if (adv_config_done == 0)
-        {
-            esp_ble_gap_start_advertising(&adv_params);
+
+        if (bdname) {
+            memcpy(bdname, rmt_bdname, rmt_bdname_len);
+            bdname[rmt_bdname_len] = '\0';
         }
-        break;
-    case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
-        // advertising start complete event to indicate advertising start successfully or failed
-        if (param->adv_start_cmpl.status != ESP_BT_STATUS_SUCCESS)
-        {
-            ESP_LOGE(GAP_TAG, "advertising start failed, error status = %x", param->adv_start_cmpl.status);
+        if (bdname_len) {
+            *bdname_len = rmt_bdname_len;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+static void update_device_info(esp_bt_gap_cb_param_t *param)
+{
+    char bda_str[18];
+    uint32_t cod = 0;
+    int32_t rssi = -129; /* invalid value */
+    esp_bt_gap_dev_prop_t *p;
+
+    ESP_LOGI(GAP_TAG, "Device found: %s", bda2str(param->disc_res.bda, bda_str, 18));
+    for (int i = 0; i < param->disc_res.num_prop; i++) {
+        p = param->disc_res.prop + i;
+        switch (p->type) {
+        case ESP_BT_GAP_DEV_PROP_COD:
+            cod = *(uint32_t *)(p->val);
+            ESP_LOGI(GAP_TAG, "--Class of Device: 0x%" PRIx32, cod);
+            break;
+        case ESP_BT_GAP_DEV_PROP_RSSI:
+            rssi = *(int8_t *)(p->val);
+            ESP_LOGI(GAP_TAG, "--RSSI: %" PRId32, rssi);
+            break;
+        case ESP_BT_GAP_DEV_PROP_BDNAME:
+        default:
             break;
         }
-        ESP_LOGI(GAP_TAG, "advertising start success");
-        break;
-    case ESP_GAP_BLE_PASSKEY_REQ_EVT: /* passkey request event */
-        ESP_LOGI(GAP_TAG, "ESP_GAP_BLE_PASSKEY_REQ_EVT");
-        /* Call the following function to input the passkey which is displayed on the remote device */
-        // esp_ble_passkey_reply(heart_rate_profile_tab[HEART_PROFILE_APP_IDX].remote_bda, true, 0x00);
-        break;
-    case ESP_GAP_BLE_OOB_REQ_EVT:
-    {
-        ESP_LOGI(GAP_TAG, "ESP_GAP_BLE_OOB_REQ_EVT");
-        uint8_t tk[16] = {1}; // If you paired with OOB, both devices need to use the same tk
-        esp_ble_oob_req_reply(param->ble_security.ble_req.bd_addr, tk, sizeof(tk));
-        break;
     }
-    case ESP_GAP_BLE_NC_REQ_EVT:
-        /* The app will receive this evt when the IO has DisplayYesNO capability and the peer device IO also has DisplayYesNo capability.
-        show the passkey number to the user to confirm it with the number displayed by peer device. */
-        esp_ble_confirm_reply(param->ble_security.ble_req.bd_addr, true);
-        // ESP_LOGI(GAP_TAG, "ESP_GAP_BLE_NC_REQ_EVT, the passkey Notify number:%" PRIu32, param->ble_security.key_notif.passkey);
-        break;
-    case ESP_GAP_BLE_SEC_REQ_EVT:
-        /* send the positive(true) security response to the peer device to accept the security request.
-        If not accept the security request, should send the security response with negative(false) accept value*/
-        esp_ble_gap_security_rsp(param->ble_security.ble_req.bd_addr, true);
-        break;
-    case ESP_GAP_BLE_PASSKEY_NOTIF_EVT: /// the app will receive this evt when the IO  has Output capability and the peer device IO has Input capability.
-        /// show the passkey number to the user to input it in the peer device.
-        // ESP_LOGI(GAP_TAG, "The passkey Notify number:%06" PRIu32, param->ble_security.key_notif.passkey);
-        break;
-    case ESP_GAP_BLE_AUTH_CMPL_EVT:
-    {
-        esp_log_buffer_hex("addr", param->ble_security.auth_cmpl.bd_addr, ESP_BD_ADDR_LEN);
-        ESP_LOGI(GAP_TAG, "pair status = %s", param->ble_security.auth_cmpl.success ? "success" : "fail");
-        if (!param->ble_security.auth_cmpl.success)
-        {
-            ESP_LOGI(GAP_TAG, "fail reason = 0x%x", param->ble_security.auth_cmpl.fail_reason);
-        }
-        break;
+
+    /* search for device with MAJOR service class as "rendering" in COD */
+    app_gap_cb_t *p_dev = &m_dev_info;
+    if (p_dev->dev_found && 0 != memcmp(param->disc_res.bda, p_dev->bda, ESP_BD_ADDR_LEN)) {
+        return;
     }
-    case ESP_GAP_BLE_SET_LOCAL_PRIVACY_COMPLETE_EVT:
-        if (param->local_privacy_cmpl.status != ESP_BT_STATUS_SUCCESS)
-        {
-            ESP_LOGE(GAP_TAG, "config local privacy failed, error status = %x", param->local_privacy_cmpl.status);
+
+    if (!esp_bt_gap_is_valid_cod(cod) ||
+	    (!(esp_bt_gap_get_cod_major_dev(cod) == ESP_BT_COD_MAJOR_DEV_PHONE) &&
+             !(esp_bt_gap_get_cod_major_dev(cod) == ESP_BT_COD_MAJOR_DEV_AV))) {
+        return;
+    }
+
+    memcpy(p_dev->bda, param->disc_res.bda, ESP_BD_ADDR_LEN);
+    p_dev->dev_found = true;
+    for (int i = 0; i < param->disc_res.num_prop; i++) {
+        p = param->disc_res.prop + i;
+        switch (p->type) {
+        case ESP_BT_GAP_DEV_PROP_COD:
+            p_dev->cod = *(uint32_t *)(p->val);
+            break;
+        case ESP_BT_GAP_DEV_PROP_RSSI:
+            p_dev->rssi = *(int8_t *)(p->val);
+            break;
+        case ESP_BT_GAP_DEV_PROP_BDNAME: {
+            uint8_t len = (p->len > ESP_BT_GAP_MAX_BDNAME_LEN) ? ESP_BT_GAP_MAX_BDNAME_LEN :
+                          (uint8_t)p->len;
+            memcpy(p_dev->bdname, (uint8_t *)(p->val), len);
+            p_dev->bdname[len] = '\0';
+            p_dev->bdname_len = len;
             break;
         }
+        case ESP_BT_GAP_DEV_PROP_EIR: {
+            memcpy(p_dev->eir, (uint8_t *)(p->val), p->len);
+            p_dev->eir_len = p->len;
+            break;
+        }
+        default:
+            break;
+        }
+    }
 
-        esp_err_t ret = esp_ble_gap_config_adv_data(&adv_data);
-        if (ret)
-        {
-            ESP_LOGE(GAP_TAG, "config adv data failed, error code = %x", ret);
-        }
-        else
-        {
-            adv_config_done |= ADV_CONFIG_FLAG;
-        }
+    if (/*p_dev->eir && */ p_dev->bdname_len == 0) {
+        get_name_from_eir(p_dev->eir, p_dev->bdname, &p_dev->bdname_len);
+        ESP_LOGI(GAP_TAG, "Found a target device, address %s, name %s", bda_str, p_dev->bdname);
+        p_dev->state = APP_GAP_STATE_DEVICE_DISCOVER_COMPLETE;
+        ESP_LOGI(GAP_TAG, "Cancel device discovery ...");
+        esp_bt_gap_cancel_discovery();
+    }
+}
 
-        ret = esp_ble_gap_config_adv_data(&scan_rsp_config);
-        if (ret)
-        {
-            ESP_LOGE(GAP_TAG, "config adv data failed, error code = %x", ret);
-        }
-        else
-        {
-            adv_config_done |= SCAN_RSP_CONFIG_FLAG;
-        }
+static void bt_app_gap_init(void)
+{
+    app_gap_cb_t *p_dev = &m_dev_info;
+    memset(p_dev, 0, sizeof(app_gap_cb_t));
 
-        break;
-    default:
+    /* start to discover nearby Bluetooth devices */
+    p_dev->state = APP_GAP_STATE_DEVICE_DISCOVERING;
+}
+
+static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
+{
+    app_gap_cb_t *p_dev = &m_dev_info;
+    char bda_str[18];
+    char uuid_str[37];
+
+    switch (event) {
+    case ESP_BT_GAP_DISC_RES_EVT: {
+        update_device_info(param);
         break;
     }
+    case ESP_BT_GAP_DISC_STATE_CHANGED_EVT: {
+        if (param->disc_st_chg.state == ESP_BT_GAP_DISCOVERY_STOPPED) {
+            ESP_LOGI(GAP_TAG, "Device discovery stopped.");
+            if ( (p_dev->state == APP_GAP_STATE_DEVICE_DISCOVER_COMPLETE ||
+                    p_dev->state == APP_GAP_STATE_DEVICE_DISCOVERING)
+                    && p_dev->dev_found) {
+                p_dev->state = APP_GAP_STATE_SERVICE_DISCOVERING;
+                ESP_LOGI(GAP_TAG, "Discover services ...");
+                esp_bt_gap_get_remote_services(p_dev->bda);
+            }
+        } else if (param->disc_st_chg.state == ESP_BT_GAP_DISCOVERY_STARTED) {
+            ESP_LOGI(GAP_TAG, "Discovery started.");
+        }
+        break;
+    }
+    case ESP_BT_GAP_RMT_SRVCS_EVT: {
+        if (memcmp(param->rmt_srvcs.bda, p_dev->bda, ESP_BD_ADDR_LEN) == 0 &&
+                p_dev->state == APP_GAP_STATE_SERVICE_DISCOVERING) {
+            p_dev->state = APP_GAP_STATE_SERVICE_DISCOVER_COMPLETE;
+            if (param->rmt_srvcs.stat == ESP_BT_STATUS_SUCCESS) {
+                ESP_LOGI(GAP_TAG, "Services for device %s found",  bda2str(p_dev->bda, bda_str, 18));
+                for (int i = 0; i < param->rmt_srvcs.num_uuids; i++) {
+                    esp_bt_uuid_t *u = param->rmt_srvcs.uuid_list + i;
+                    ESP_LOGI(GAP_TAG, "--%s", uuid2str(u, uuid_str, 37));
+                    // ESP_LOGI(GAP_TAG, "--%d", u->len);
+                }
+            } else {
+                ESP_LOGI(GAP_TAG, "Services for device %s not found",  bda2str(p_dev->bda, bda_str, 18));
+            }
+        }
+        break;
+    }
+    case ESP_BT_GAP_RMT_SRVC_REC_EVT:
+    default: {
+        ESP_LOGI(GAP_TAG, "event: %d", event);
+        break;
+    }
+    }
+    return;
+}
+
+static void bt_app_gap_start_up(void)
+{
+    char *dev_name = "PHONELINK";
+    esp_bt_dev_set_device_name(dev_name);
+
+    /* register GAP callback function */
+    esp_bt_gap_register_callback(bt_app_gap_cb);
+
+    /* set discoverable and connectable mode, wait to be connected */
+    esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+
+    /* inititialize device information and status */
+    bt_app_gap_init();
+
+    esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
 }
 
 void bt_app_controller_init()
@@ -219,9 +285,5 @@ void bt_app_controller_init()
         return;
     }
 
-    if ((esp_ble_gap_register_callback(gap_event_handler) != ESP_OK))
-    {
-        ESP_LOGE(GAP_TAG, "%s gattc register error, error code = %x", __func__, ret);
-        return;
-    }
+    bt_app_gap_start_up();
 }

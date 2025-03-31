@@ -11,28 +11,7 @@
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
 #include <inttypes.h> 
-
-#define GAP_TAG          "GAP"
-
-typedef enum {
-    APP_GAP_STATE_IDLE = 0,
-    APP_GAP_STATE_DEVICE_DISCOVERING,
-    APP_GAP_STATE_DEVICE_DISCOVER_COMPLETE,
-    APP_GAP_STATE_SERVICE_DISCOVERING,
-    APP_GAP_STATE_SERVICE_DISCOVER_COMPLETE,
-} app_gap_state_t;
-
-typedef struct {
-    bool dev_found;
-    uint8_t bdname_len;
-    uint8_t eir_len;
-    uint8_t rssi;
-    uint32_t cod;
-    uint8_t eir[ESP_BT_GAP_EIR_DATA_LEN];
-    uint8_t bdname[ESP_BT_GAP_MAX_BDNAME_LEN + 1];
-    esp_bd_addr_t bda;
-    app_gap_state_t state;
-} app_gap_cb_t;
+#include "bluetooth.h"
 
 static app_gap_cb_t m_dev_info;
 
@@ -241,7 +220,7 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
 static void bt_app_gap_start_up(void)
 {
     char *dev_name = "PHONELINK";
-    esp_bt_dev_set_device_name(dev_name);
+    esp_bt_gap_set_device_name(dev_name);
 
     /* register GAP callback function */
     esp_bt_gap_register_callback(bt_app_gap_cb);

@@ -11,6 +11,7 @@
 #include "esp_bt_device.h"
 #include "esp_gap_bt_api.h"
 #include "bluetooth.h"
+#include "hfp.h"
 
 void app_main() {
     esp_err_t ret = nvs_flash_init();
@@ -21,4 +22,5 @@ void app_main() {
     ESP_ERROR_CHECK( ret );
 
     bt_app_controller_init();
+    start_hfp();
 }

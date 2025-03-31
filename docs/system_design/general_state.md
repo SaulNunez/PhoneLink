@@ -3,18 +3,12 @@
 You can think how phone link firmware works internally from this flow chart:
 
 ```mermaid
----
-title: General state
----
-stateDiagram-v2
-    [*] --> Standby
-
+graph TD;
     Standby --> Ringing
     Ringing --> Standby
-    Ringing --> CallActive
-    CallActive --> Standby
+    Ringing --> Call-Active
+    Call-Active --> Standby
     Standby --> Off-Hook
-    OffHook --> Standby
-    OffHook --> CallActive
-    Standby --> [*]
+    Off-Hook --> Standby
+    Off-Hook --> Call-Active
 ```

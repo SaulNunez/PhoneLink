@@ -15,6 +15,14 @@
 
 static app_gap_cb_t m_dev_info;
 
+/**
+ * @brief Convert Bluetooth device address to string
+ *
+ * @param bda  Bluetooth device address
+ * @param str  Output string buffer
+ * @param size Size of the output string buffer
+ * @return     Pointer to the output string buffer, or NULL on error
+ */
 static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
 {
     if (bda == NULL || str == NULL || size < 18) {
@@ -27,6 +35,14 @@ static char *bda2str(esp_bd_addr_t bda, char *str, size_t size)
     return str;
 }
 
+/**
+ * @brief Convert UUID to string
+ *
+ * @param uuid UUID to convert
+ * @param str  Output string buffer
+ * @param size Size of the output string buffer
+ * @return     Pointer to the output string buffer, or NULL on error
+ */
 static char *uuid2str(esp_bt_uuid_t *uuid, char *str, size_t size)
 {
     if (uuid == NULL || str == NULL) {
@@ -49,6 +65,14 @@ static char *uuid2str(esp_bt_uuid_t *uuid, char *str, size_t size)
     return str;
 }
 
+/**
+ * @brief Get Bluetooth device name from EIR data
+ *
+ * @param eir        Pointer to EIR data
+ * @param bdname     Output buffer for the device name
+ * @param bdname_len Output pointer for the device name length
+ * @return           true if name found, false otherwise
+ */
 static bool get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len)
 {
     uint8_t *rmt_bdname = NULL;
@@ -81,6 +105,11 @@ static bool get_name_from_eir(uint8_t *eir, uint8_t *bdname, uint8_t *bdname_len
     return false;
 }
 
+/**
+ * @brief Update device information from GAP callback parameters
+ *
+ * @param param GAP callback parameters
+ */
 static void update_device_info(esp_bt_gap_cb_param_t *param)
 {
     char bda_str[18];
@@ -156,6 +185,9 @@ static void update_device_info(esp_bt_gap_cb_param_t *param)
     }
 }
 
+/**
+ * @brief Initialize the application GAP state
+ */
 static void bt_app_gap_init(void)
 {
     app_gap_cb_t *p_dev = &m_dev_info;
@@ -165,6 +197,12 @@ static void bt_app_gap_init(void)
     p_dev->state = APP_GAP_STATE_DEVICE_DISCOVERING;
 }
 
+/**
+ * @brief GAP callback function
+ *
+ * @param event GAP event
+ * @param param GAP callback parameters
+ */
 static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
 {
     app_gap_cb_t *p_dev = &m_dev_info;
@@ -217,6 +255,9 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
     return;
 }
 
+/**
+ * @brief Start up GAP operations
+ */
 static void bt_app_gap_start_up(void)
 {
     char *dev_name = "PHONELINK";

@@ -246,6 +246,32 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
         }
         break;
     }
+    case ESP_BT_GAP_AUTH_CMPL_EVT: {
+        if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
+            ESP_LOGI(GAP_TAG, "authentication success: %s", param->auth_cmpl.device_name);
+            esp_log_buffer_hex(GAP_TAG, param->auth_cmpl.bda, ESP_BD_ADDR_LEN);
+        } else {
+            ESP_LOGE(GAP_TAG, "authentication failed, status:%d", param->auth_cmpl.stat);
+        }
+        break;
+    }
+    case ESP_BT_GAP_PIN_REQ_EVT: {
+        ESP_LOGI(GAP_TAG, "ESP_BT_GAP_PIN_REQ_EVT min_16_digit:%d", param->pin_req.min_16_digit);
+        if (param->pin_req.min_16_digit) {
+            ESP_LOGI(GAP_TAG, "Input pin code: 0000 0000 0000 0000");
+            esp_bt_pin_code_t pin_code = {0};
+            esp_bt_gap_pin_reply(param->pin_req.bda, true, 16, pin_code);
+        } else {
+            ESP_LOGI(GAP_TAG, "Input pin code: 0000");
+            esp_bt_pin_code_t pin_code;
+            pin_code[0] = '0';
+            pin_code[1] = '0';
+            pin_code[2] = '0';
+            pin_code[3] = '0';
+            esp_bt_gap_pin_reply(param->pin_req.bda, true, 4, pin_code);
+        }
+        break;
+    }
     case ESP_BT_GAP_RMT_SRVC_REC_EVT:
     default: {
         ESP_LOGI(GAP_TAG, "event: %d", event);
@@ -271,6 +297,15 @@ static void bt_app_gap_start_up(void)
 
     /* inititialize device information and status */
     bt_app_gap_init();
+
+    /* Set Fixed PIN code */
+    esp_bt_pin_type_t pin_type = ESP_BT_PIN_TYPE_FIXED;
+    esp_bt_pin_code_t pin_code;
+    pin_code[0] = '0';
+    pin_code[1] = '0';
+    pin_code[2] = '0';
+    pin_code[3] = '0';
+    esp_bt_gap_set_pin(pin_type, 4, pin_code);
 
     esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
 }

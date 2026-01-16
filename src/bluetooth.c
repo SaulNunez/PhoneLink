@@ -12,6 +12,7 @@
 #include "esp_gap_bt_api.h"
 #include <inttypes.h> 
 #include "bluetooth.h"
+#include "nvm_bluetooth.h"
 
 static app_gap_cb_t m_dev_info;
 
@@ -250,6 +251,10 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
         if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
             ESP_LOGI(GAP_TAG, "authentication success: %s", param->auth_cmpl.device_name);
             esp_log_buffer_hex(GAP_TAG, param->auth_cmpl.bda, ESP_BD_ADDR_LEN);
+            if (nvs_set_blob(nvs_handle, "peer_bda", param->auth_cmpl.bda, ESP_BD_ADDR_LEN) == ESP_OK) {
+                commit_nvs_changes();
+                ESP_LOGI(GAP_TAG, "Paired device saved to NVS");
+            }
         } else {
             ESP_LOGE(GAP_TAG, "authentication failed, status:%d", param->auth_cmpl.stat);
         }
@@ -307,7 +312,16 @@ static void bt_app_gap_start_up(void)
     pin_code[3] = '0';
     esp_bt_gap_set_pin(pin_type, 4, pin_code);
 
-    esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
+    size_t size = ESP_BD_ADDR_LEN;
+    if (nvs_get_blob(nvs_handle, "peer_bda", m_dev_info.bda, &size) == ESP_OK) {
+        ESP_LOGI(GAP_TAG, "Restoring connection to saved device...");
+        m_dev_info.dev_found = true;
+        m_dev_info.state = APP_GAP_STATE_SERVICE_DISCOVERING;
+        esp_bt_gap_get_remote_services(m_dev_info.bda);
+    } else {
+        ESP_LOGI(GAP_TAG, "No saved device found, starting discovery...");
+        esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
+    }
 }
 
 void bt_app_controller_init()

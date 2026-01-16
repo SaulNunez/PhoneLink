@@ -1,8 +1,9 @@
 #include <esp_err.h>
 #include <nvs.h>
+#include "esp_log.h"
 
 static const char *TAG = "nvs_bluetooth";
-static nvs_handle_t nvs_handle = NULL;
+nvs_handle_t nvs_handle = 0;
 
 void commit_nvs_changes(){
     // Commit written value.

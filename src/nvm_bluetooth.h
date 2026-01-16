@@ -1,6 +1,10 @@
 #ifndef __NVM_BLUETOOTH__
 #define __NVM_BLUETOOTH__
 
+#include "nvs.h"
+
+extern nvs_handle_t nvs_handle;
+
 /**
  * @brief Commit any pending changes to NVS.
  *

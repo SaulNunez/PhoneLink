@@ -3,7 +3,7 @@
 
 #include "nvs.h"
 
-extern nvs_handle_t nvs_handle;
+extern nvs_handle_t nvs_handle_bt;
 
 /**
  * @brief Commit any pending changes to NVS.

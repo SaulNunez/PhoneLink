@@ -250,8 +250,8 @@ static void bt_app_gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *pa
     case ESP_BT_GAP_AUTH_CMPL_EVT: {
         if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
             ESP_LOGI(GAP_TAG, "authentication success: %s", param->auth_cmpl.device_name);
-            esp_log_buffer_hex(GAP_TAG, param->auth_cmpl.bda, ESP_BD_ADDR_LEN);
-            if (nvs_set_blob(nvs_handle, "peer_bda", param->auth_cmpl.bda, ESP_BD_ADDR_LEN) == ESP_OK) {
+            ESP_LOG_BUFFER_HEX(GAP_TAG, param->auth_cmpl.bda, ESP_BD_ADDR_LEN);
+            if (nvs_set_blob(nvs_handle_bt, "peer_bda", param->auth_cmpl.bda, ESP_BD_ADDR_LEN) == ESP_OK) {
                 commit_nvs_changes();
                 ESP_LOGI(GAP_TAG, "Paired device saved to NVS");
             }
@@ -313,7 +313,7 @@ static void bt_app_gap_start_up(void)
     esp_bt_gap_set_pin(pin_type, 4, pin_code);
 
     size_t size = ESP_BD_ADDR_LEN;
-    if (nvs_get_blob(nvs_handle, "peer_bda", m_dev_info.bda, &size) == ESP_OK) {
+    if (nvs_get_blob(nvs_handle_bt, "peer_bda", m_dev_info.bda, &size) == ESP_OK) {
         ESP_LOGI(GAP_TAG, "Restoring connection to saved device...");
         m_dev_info.dev_found = true;
         m_dev_info.state = APP_GAP_STATE_SERVICE_DISCOVERING;

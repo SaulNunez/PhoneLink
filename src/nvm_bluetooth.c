@@ -1,13 +1,14 @@
 #include <esp_err.h>
 #include <nvs.h>
+#include "nvs_flash.h"
 #include "esp_log.h"
 
 static const char *TAG = "nvs_bluetooth";
-nvs_handle_t nvs_handle = 0;
+nvs_handle_t nvs_handle_bt = 0;
 
 void commit_nvs_changes(){
     // Commit written value.
-    esp_err_t err = nvs_commit(nvs_handle);
+    esp_err_t err = nvs_commit(nvs_handle_bt);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Error (%s) committing changes to NVS!", esp_err_to_name(err));
     } else {
@@ -28,7 +29,7 @@ void init_nvs(){
 
     // Open NVS handle
     ESP_LOGI(TAG, "\nOpening Non-Volatile Storage (NVS) handle...");
-    err = nvs_open("bluetooth", NVS_READWRITE, &nvs_handle);
+    err = nvs_open("bluetooth", NVS_READWRITE, &nvs_handle_bt);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
         return;

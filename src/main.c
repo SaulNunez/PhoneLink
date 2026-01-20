@@ -19,5 +19,5 @@ void app_main()
     init_nvs();
 
     bt_app_controller_init();
-    start_hfp();
+    //start_hfp();
 }

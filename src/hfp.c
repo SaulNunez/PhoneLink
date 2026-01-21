@@ -18,6 +18,14 @@
 #include "sys/time.h"
 #include "sdkconfig.h"
 #include "hfp.h"
+#include "driver/i2s.h"
+
+// I2S configuration
+#define I2S_BCK_IO      26
+#define I2S_WS_IO       25
+#define I2S_DO_IO       22
+#define I2S_DI_IO       (-1) // Not used for output
+#define I2S_PORT        I2S_NUM_0
 
 const char *c_hf_evt_str[] = {
     "CONNECTION_STATE_EVT",              /*!< connection state changed event */
@@ -164,6 +172,61 @@ const char *c_inband_ring_state_str[] = {
 
 extern esp_bd_addr_t peer_addr;
 
+static void i2s_init(int sample_rate)
+{
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
+        .sample_rate = sample_rate,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT, // Stereo
+        .communication_format = I2S_COMM_FORMAT_STAND_MSB,
+        .dma_buf_count = 6,
+        .dma_buf_len = 300,
+        .use_apll = false,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1
+    };
+
+    i2s_pin_config_t pin_config = {
+        .bck_io_num = I2S_BCK_IO,
+        .ws_io_num = I2S_WS_IO,
+        .data_out_num = I2S_DO_IO,
+        .data_in_num = I2S_DI_IO
+    };
+
+    ESP_ERROR_CHECK(i2s_driver_install(I2S_PORT, &i2s_config, 0, NULL));
+    ESP_ERROR_CHECK(i2s_set_pin(I2S_PORT, &pin_config));
+}
+
+static void i2s_deinit(void)
+{
+    i2s_driver_uninstall(I2S_PORT);
+}
+
+// When audio connection is established, this function is called to handle audio data.
+static void bt_app_hf_client_sco_data_cb(const uint8_t *data, uint32_t len)
+{
+    // The data from BT stack is 16-bit mono PCM data.
+    // We are using stereo I2S, so we need to duplicate the mono data to both channels.
+    int16_t stereo_buf[240]; // Max mSBC data length is 240 bytes.
+    if (len > sizeof(stereo_buf) / 2) {
+        ESP_LOGW(BT_HF_TAG, "SCO data length %"PRIu32" is larger than 240, truncating", len);
+        len = sizeof(stereo_buf) / 2;
+    }
+
+    int sample_count = len / 2;
+    for (int i = 0; i < sample_count; i++) {
+        stereo_buf[i * 2] = ((int16_t *)data)[i];
+        stereo_buf[i * 2 + 1] = ((int16_t *)data)[i];
+    }
+
+    size_t bytes_written = 0;
+    esp_err_t err = i2s_write(I2S_PORT, stereo_buf, len * 2, &bytes_written, portMAX_DELAY);
+    if (err != ESP_OK || bytes_written < len * 2) {
+        ESP_LOGE(BT_HF_TAG, "I2S write error, err = %d, written %zu, expected %"PRIu32, err, bytes_written, len * 2);
+    }
+}
+
+
 /* callback for HF_CLIENT */
 void bt_app_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_t *param)
 {
@@ -191,6 +254,16 @@ void bt_app_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_
         {
             ESP_LOGI(BT_HF_TAG, "--audio state %s",
                     c_audio_state_str[param->audio_stat.state]);
+            if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED) {
+                ESP_LOGI(BT_HF_TAG, "Initializing I2S for narrowband audio (8kHz)");
+                i2s_init(8000);
+            } else if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC) {
+                ESP_LOGI(BT_HF_TAG, "Initializing I2S for wideband audio (16kHz)");
+                i2s_init(16000);
+            } else if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_DISCONNECTED) {
+                ESP_LOGI(BT_HF_TAG, "De-initializing I2S");
+                i2s_deinit();
+            }
             break;
         }
 
@@ -351,4 +424,11 @@ void start_hfp()
 {
     esp_hf_client_register_callback(bt_app_hf_client_cb);
     esp_hf_client_init();
+    /* Register SCO data callback */
+    esp_hf_client_register_data_callback(bt_app_hf_client_sco_data_cb, NULL);
+}
+
+void hfp_answer_call()
+{
+    esp_hf_client_answer_call();
 }

@@ -12,5 +12,6 @@
  */
 void bt_app_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_t *param);
 void start_hfp();
+void hfp_reject_call();
 
 #endif /* __BT_APP_HF_H__*/

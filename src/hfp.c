@@ -432,3 +432,8 @@ void hfp_answer_call()
 {
     esp_hf_client_answer_call();
 }
+
+void hfp_reject_call()
+{
+    esp_hf_client_reject_call();
+}

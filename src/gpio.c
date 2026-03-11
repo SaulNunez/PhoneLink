@@ -7,14 +7,14 @@
 #include "freertos/semphr.h"
 #include "hfp.h"
 
-#define PIN_Q1_DTMF 1
-#define PIN_Q2_DTMF 2
-#define PIN_Q3_DTMF 3
-#define PIN_Q4_DTMF 4
-#define PIN_StD_DTMF 5 // Please change this to the correct GPIO pin
-#define GPIO_PHONE_UNHOOKED 6
-#define GPIO_SLIC_RING_MODE 8
-#define GPIO_SLIC_FORWARD_REVERSE 7
+#define PIN_Q1_DTMF 34
+#define PIN_Q2_DTMF 35
+#define PIN_Q3_DTMF 36
+#define PIN_Q4_DTMF 39
+#define PIN_StD_DTMF 33 // Please change this to the correct GPIO pin
+#define GPIO_PHONE_UNHOOKED 16
+#define GPIO_SLIC_RING_MODE 17
+#define GPIO_SLIC_FORWARD_REVERSE 18
 
 static QueueHandle_t gpio_evt_queue = NULL;
 static TaskHandle_t ringing_task_handle = NULL;

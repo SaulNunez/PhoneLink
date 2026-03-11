@@ -1,6 +1,8 @@
 #ifndef __GPIO_H__
 #define __GPIO_H__
 
+#include <stdbool.h>
+
 enum offhook_event_type_t {
     GPIO_PHONE_UNHOOKED_RISING_EDGE = 0,
     GPIO_PHONE_UNHOOKED_FALLING_EDGE = 1,
@@ -8,7 +10,7 @@ enum offhook_event_type_t {
 
 typedef enum offhook_event_type_t offhook_event_type_t;
 
-
+void gpio_set_ringing(bool active);
 
 void gpio_init();
 

@@ -12,9 +12,40 @@
 #define PIN_Q3_DTMF 3
 #define PIN_Q4_DTMF 4
 #define PIN_StD_DTMF 5 // Please change this to the correct GPIO pin
-#define GPIO_PHONE_UNHOOKED 6 
+#define GPIO_PHONE_UNHOOKED 6
+#define GPIO_SLIC_RING_MODE 8
+#define GPIO_SLIC_FORWARD_REVERSE 7
 
 static QueueHandle_t gpio_evt_queue = NULL;
+static TaskHandle_t ringing_task_handle = NULL;
+
+void ringing_task(void *pvParameters)
+{
+    while (1) {
+        gpio_set_level(GPIO_SLIC_FORWARD_REVERSE, 1);
+        vTaskDelay(25 / portTICK_PERIOD_MS); // 20Hz means 50ms period, so 25ms high, 25ms low
+        gpio_set_level(GPIO_SLIC_FORWARD_REVERSE, 0);
+        vTaskDelay(25 / portTICK_PERIOD_MS);
+    }
+}
+
+void gpio_set_ringing(bool active)
+{
+    if (active) {
+        gpio_set_level(GPIO_SLIC_RING_MODE, 1);
+        if (ringing_task_handle == NULL) {
+            xTaskCreate(ringing_task, "ringing_task", 1024, NULL, 5, &ringing_task_handle);
+        }
+    } else {
+        gpio_set_level(GPIO_SLIC_RING_MODE, 0);
+        if (ringing_task_handle != NULL) {
+            vTaskDelete(ringing_task_handle);
+            ringing_task_handle = NULL;
+        }
+        // Ensure the pin is low when not ringing.
+        gpio_set_level(GPIO_SLIC_FORWARD_REVERSE, 0);
+    }
+}
 
 void offhook_event_detected(offhook_event_type_t event_type) {
 
@@ -107,6 +138,9 @@ void gpio_init()
     gpio_set_direction(PIN_Q2_DTMF, GPIO_MODE_INPUT);
     gpio_set_direction(PIN_Q3_DTMF, GPIO_MODE_INPUT);
     gpio_set_direction(PIN_Q4_DTMF, GPIO_MODE_INPUT);
+
+    gpio_set_direction(GPIO_SLIC_RING_MODE, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GPIO_SLIC_FORWARD_REVERSE, GPIO_MODE_OUTPUT);
 
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));

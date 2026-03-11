@@ -12,8 +12,13 @@
 #define PIN_Q3_DTMF 3
 #define PIN_Q4_DTMF 4
 #define PIN_StD_DTMF 5 // Please change this to the correct GPIO pin
+#define GPIO_PHONE_UNHOOKED 6 
 
-static xQueueHandle gpio_evt_queue = NULL;
+static QueueHandle_t gpio_evt_queue = NULL;
+
+void offhook_event_detected(offhook_event_type_t event_type) {
+
+}
 
 void read_and_send_dtmf() {
     int q1 = gpio_get_level(PIN_Q1_DTMF);
@@ -63,6 +68,13 @@ static void dtmf_reader_task(void* arg)
                 // add a small delay to debounce and wait for the signals to be stable
                 vTaskDelay(10 / portTICK_PERIOD_MS);
                 read_and_send_dtmf();
+            } else if (io_num == GPIO_PHONE_UNHOOKED) {
+                int level = gpio_get_level(io_num);
+                if (level == 1) {
+                    offhook_event_detected(GPIO_PHONE_UNHOOKED_RISING_EDGE);
+                } else {
+                    offhook_event_detected(GPIO_PHONE_UNHOOKED_FALLING_EDGE);
+                }
             }
         }
     }
@@ -81,6 +93,15 @@ void gpio_init()
     io_conf.pull_down_en = 1;
     gpio_config(&io_conf);
 
+    // new config for GPIO_PHONE_UNHOOKED
+    gpio_config_t unhook_io_conf;
+    unhook_io_conf.intr_type = GPIO_INTR_ANYEDGE;
+    unhook_io_conf.pin_bit_mask = (1ULL<<GPIO_PHONE_UNHOOKED);
+    unhook_io_conf.mode = GPIO_MODE_INPUT;
+    unhook_io_conf.pull_down_en = 0;
+    unhook_io_conf.pull_up_en = 0;
+    gpio_config(&unhook_io_conf);
+
     // set direction for Q pins
     gpio_set_direction(PIN_Q1_DTMF, GPIO_MODE_INPUT);
     gpio_set_direction(PIN_Q2_DTMF, GPIO_MODE_INPUT);
@@ -96,4 +117,5 @@ void gpio_init()
     gpio_install_isr_service(0);
     //hook isr handler for specific gpio pin
     gpio_isr_handler_add(PIN_StD_DTMF, gpio_isr_handler, (void*) PIN_StD_DTMF);
+    gpio_isr_handler_add(GPIO_PHONE_UNHOOKED, gpio_isr_handler, (void*) GPIO_PHONE_UNHOOKED);
 }

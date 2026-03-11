@@ -1,4 +1,4 @@
-#include "dtmf.h"
+#include "gpio.h"
 #include <stdio.h>
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
@@ -68,7 +68,7 @@ static void dtmf_reader_task(void* arg)
     }
 }
 
-void dtmf_init()
+void gpio_init()
 {
     gpio_config_t io_conf;
     //interrupt of rising edge

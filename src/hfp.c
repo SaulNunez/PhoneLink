@@ -437,3 +437,8 @@ void hfp_reject_call()
 {
     esp_hf_client_reject_call();
 }
+
+void hfp_send_dtmf(char code)
+{
+    esp_hf_client_send_dtmf(code);
+}

@@ -12,6 +12,7 @@
 #include "esp_gap_bt_api.h"
 #include "bluetooth.h"
 #include "hfp.h"
+#include "dtmf.h"
 #include "nvm_bluetooth.h"
 
 void app_main()
@@ -20,4 +21,5 @@ void app_main()
 
     bt_app_controller_init();
     start_hfp();
+    dtmf_init();
 }

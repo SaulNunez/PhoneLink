@@ -356,3 +356,8 @@ void bt_app_controller_init()
 
     bt_app_gap_start_up();
 }
+
+esp_bd_addr_t* get_peer_address()
+{
+    return &m_dev_info.bda;
+}

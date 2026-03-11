@@ -39,5 +39,6 @@ typedef struct {
  * initializes the Bluedroid stack, enables it, and starts the application GAP startup.
  */
 void bt_app_controller_init();
+esp_bd_addr_t* get_peer_address();
 
 #endif /* __BT_APP__*/

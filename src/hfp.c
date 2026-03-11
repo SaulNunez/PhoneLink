@@ -18,7 +18,9 @@
 #include "sys/time.h"
 #include "sdkconfig.h"
 #include "hfp.h"
+#include "bluetooth.h"
 #include "driver/i2s.h"
+#include "gpio.h"
 
 // I2S configuration
 #define I2S_BCK_IO      26
@@ -26,6 +28,9 @@
 #define I2S_DO_IO       22
 #define I2S_DI_IO       (-1) // Not used for output
 #define I2S_PORT        I2S_NUM_0
+
+static hfp_incoming_call_callback_t incoming_call_callback = NULL;
+static hfp_call_accepted_callback_t call_accepted_callback = NULL;
 
 const char *c_hf_evt_str[] = {
     "CONNECTION_STATE_EVT",              /*!< connection state changed event */
@@ -170,7 +175,7 @@ const char *c_inband_ring_state_str[] = {
     "Provided",
 };
 
-extern esp_bd_addr_t peer_addr;
+
 
 static void i2s_init(int sample_rate)
 {
@@ -243,9 +248,9 @@ void bt_app_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_
                     c_connection_state_str[param->conn_stat.state],
                     param->conn_stat.peer_feat,
                     param->conn_stat.chld_feat);
-            memcpy(peer_addr,param->conn_stat.remote_bda,ESP_BD_ADDR_LEN);
+            memcpy(get_peer_address(),param->conn_stat.remote_bda,ESP_BD_ADDR_LEN);
             if (param->conn_stat.state == ESP_HF_CLIENT_CONNECTION_STATE_SLC_CONNECTED) {
-                //esp_pbac_connect(peer_addr);
+                //esp_pbac_connect(get_peer_address());
             }
             break;
         }
@@ -320,6 +325,17 @@ void bt_app_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_
         {
             ESP_LOGI(BT_HF_TAG, "--Call setup indicator %s",
                     c_call_setup_str[param->call_setup.status]);
+             if (param->call_setup.status == ESP_HF_CALL_SETUP_STATUS_INCOMING) {
+                gpio_set_ringing(true);
+                if(incoming_call_callback) {
+                    incoming_call_callback(NULL);
+                }
+            } else if (param->call_setup.status == ESP_HF_CALL_SETUP_STATUS_IDLE) {
+                gpio_set_ringing(false);
+                if(call_accepted_callback) {
+                    call_accepted_callback();
+                }
+            }
             break;
         }
 
@@ -341,6 +357,9 @@ void bt_app_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_
         {
             ESP_LOGI(BT_HF_TAG, "--clip number %s",
                     (param->clip.number == NULL) ? "NULL" : (param->clip.number));
+            /*if (incoming_call_callback) {
+                incoming_call_callback(param->clip.number);
+            }*/
             break;
         }
 
@@ -426,6 +445,16 @@ void start_hfp()
     esp_hf_client_init();
     /* Register SCO data callback */
     esp_hf_client_register_data_callback(bt_app_hf_client_sco_data_cb, NULL);
+}
+
+void hfp_register_incoming_call_callback(hfp_incoming_call_callback_t callback)
+{
+    incoming_call_callback = callback;
+}
+
+void hfp_register_call_accepted_callback(hfp_call_accepted_callback_t callback)
+{
+    call_accepted_callback = callback;
 }
 
 void hfp_answer_call()
